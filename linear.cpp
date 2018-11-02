@@ -8,8 +8,6 @@ using namespace std;
 
 const size_t DEFAULT_STEP = 1;
 
-//typedef vector<vector<vector<double>>> TSpace;
-
 class Puasson3dSolver {
 private:
 	size_t SizeX;
@@ -22,10 +20,6 @@ private:
 
 	size_t IterCnt;
 	double Coeff;
-
-	/*TSpace Func;
-	TSpace NewFunc;
-	TSpace Ro;*/
 
 	double ***Func;
 	double ***NewFunc;
@@ -49,27 +43,16 @@ private:
 	}
 
 	void arrInit() {
-
-		/*Func.resize(SizeX);
-		NewFunc.resize(SizeX);
-		Ro.resize(SizeX);*/
-
 		Func = new double**[SizeX];
 		NewFunc = new double**[SizeX];
 		Ro = new double**[SizeX];
 
 		for (size_t i = 0; i < SizeX; i++) {
-			/*Func[i].resize(SizeY);
-			NewFunc[i].resize(SizeY);
-			Ro[i].resize(SizeY);*/
 			Func[i] = new double*[SizeY];
 			NewFunc[i] = new double*[SizeY];
 			Ro[i] = new double*[SizeY];
 
 			for (size_t j = 0; j < SizeY; j++) {
-				/*Func[i][j].resize(SizeZ);
-				NewFunc[i][j].resize(SizeZ);
-				Ro[i][j].resize(SizeZ);*/
 
 				Func[i][j] = new double[SizeZ];
 				NewFunc[i][j] = new double[SizeZ];
@@ -163,7 +146,6 @@ public:
 						of << " ";
 					}
 					of << round(Func[i][j][k] * 100.) / 100.;
-					//cout << Func[i][j][k] << endl;
 				}
 				of << endl;
 			}
