@@ -1,3 +1,30 @@
+/*
+================================================
+__________                 __      __________   
+\______   \_____    ______/  \    /  \______ \  
+ |     ___/\__  \  /  ___/\   \/\/   /|    |  \ 
+ |    |     / __ \_\___ \  \        / |    `   \
+ |____|    (____  /____  >  \__/\  / /_______  /
+                \/     \/        \/          \/ 
+
+================================================
+(c) Developed by Pavel Sushko (PasWD)
+http://paswd.ru/
+me@paswd.ru
+
+All rights reserved
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Parallel programming in Moscow Aviation Institute
+Laboratory work #1
+
+Variant:
+* 3D
+* Jacoby method
+* Sendrecv
+* Cycle & barrier output
+*/
+
 #include "mpi.h"
 #include <iostream>
 #include <fstream>
@@ -14,16 +41,18 @@ const int TAGS_LAYER = 1;
 
 class Puasson3dSolver {
 private:
+	//Input variables
 	size_t SizeX;
 	size_t SizeY;
 	size_t SizeZ;
 
+	size_t IterCnt;
+	double Coeff;
+
+	//Math variables
 	double StepSqX;
 	double StepSqY;
 	double StepSqZ;
-
-	size_t IterCnt;
-	double Coeff;
 
 	double ***Func;
 	double ***NewFunc;
@@ -51,9 +80,11 @@ private:
 	bool isFirstMachine() {
 		return MachineId == 0;
 	}
+
 	bool isLastMachine() {
 		return MachineId == (MachinesCnt - 1);
 	}
+
 	size_t getLayersOnMachine(size_t machineId) {
 		size_t res = SizeZ / MachinesCnt;
 		if (machineId < SizeZ % MachinesCnt) {
@@ -61,6 +92,7 @@ private:
 		}
 		return res;
 	}
+
 	size_t getOriginalZPos(size_t posInLayer) {
 		size_t prevLayersCnt = 0;
 		for (size_t i = 0; i < MachineId; i++) {
@@ -84,15 +116,10 @@ private:
 		return false;
 	}
 
-
 	void setClusterParams(size_t machinesCnt, size_t machineId) {
 		MachinesCnt = machinesCnt;
 		MachineId = machineId;
-		/*LayersOnMachine = SizeZ / MachinesCnt;
 
-		if (MachineId < SizeZ % MachinesCnt) {
-			LayersOnMachine++;
-		}*/
 		LayersOnMachine = getLayersOnMachine(MachineId);
 		if (isFirstMachine() != isLastMachine()) {
 			LayersOnMachine++;
@@ -108,6 +135,7 @@ private:
 		in.close();
 		BufferSize = SizeX * SizeY;
 	}
+
 	void copyLayerToBuffer(double *buffer, size_t layerId) {
 		for (size_t i = 0; i < SizeX; i++) {
 			for (size_t j = 0; j < SizeY; j++) {
@@ -115,6 +143,7 @@ private:
 			}
 		}
 	}
+
 	void getLayerFromBuffer(double *buffer, size_t layerId) {
 		for (size_t i = 0; i < SizeX; i++) {
 			for (size_t j = 0; j < SizeY; j++) {
@@ -154,7 +183,6 @@ private:
 
 		SendBuffer = new double[BufferSize];
 		GetBuffer = new double[BufferSize];
-
 	}
 
 	void arrClear() {
@@ -164,10 +192,12 @@ private:
 				delete [] NewFunc[i][j];
 				delete [] Ro[i][j];
 			}
+
 			delete [] Func[i];
 			delete [] NewFunc[i];
 			delete [] Ro[i];
 		}
+
 		delete [] Func;
 		delete [] NewFunc;
 		delete [] Ro;
@@ -214,13 +244,15 @@ public:
 					GetBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, TAGS_LAYER, MPI_COMM_WORLD, &Status);
 				getLayerFromBuffer(GetBuffer, 0);
 			}
+
+			//Exchange data with next layer
 			if (MachineId < MachinesCnt - 1) {
 				copyLayerToBuffer(SendBuffer, MachinesCnt - 2);
 				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, TAGS_LAYER,
 					GetBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, TAGS_LAYER, MPI_COMM_WORLD, &Status);
 				getLayerFromBuffer(GetBuffer, MachinesCnt - 1);
 			}
-			//Exchange data with next layer
+
 			for (size_t i = 1; i < untillX; i++) {
 				for (size_t j = 1; j < untillY; j++) {
 					for (size_t k = 1; k < untillZ; k++) {
@@ -237,7 +269,6 @@ public:
 	void writeResult(std::ostream& out) {
 		for (size_t i = 0; i < MachinesCnt; i++) {
 			if (i == MachineId) {
-				//ofstream of(filename.c_str());
 				if (MachineId == 0) {
 					out << "Solution for " << SizeX << "x" << SizeY << "x" << SizeZ << endl;
 					out << "Alpha = " << Coeff << endl;
@@ -263,7 +294,6 @@ public:
 					}
 					out << endl;
 				}
-				//of.close();
 			}
 			MPI_Barrier(MPI_COMM_WORLD);
 		}
@@ -279,9 +309,7 @@ int main(int argc, char** argv) {
 	int machineId, machinesCnt;
 	MPI_Comm_size(MPI_COMM_WORLD, &machinesCnt);
 	MPI_Comm_rank(MPI_COMM_WORLD, &machineId);
-	//cout << "TEST" << endl;
 
-	//int argc, char * argv[]
 	Puasson3dSolver solver("input.txt", machinesCnt, machineId);
 	if (!solver.isUnclaimed()) {
 		solver.solve();
