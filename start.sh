@@ -1,5 +1,5 @@
 #!/bin/bash
 
 mpicxx main.cpp
-./run.sh 4
+./run.sh $1
 
