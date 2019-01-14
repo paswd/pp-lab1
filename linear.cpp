@@ -128,12 +128,13 @@ public:
 						//cout << "k = " << i << endl;
 						NewFunc[i][j][k] = getElementNewValue(i, j, k);
 						
-						double ***tmp = Func;
-						Func = NewFunc;
-						NewFunc = tmp;
+						
 					}
 				}
 			}
+			double ***tmp = Func;
+			Func = NewFunc;
+			NewFunc = tmp;
 		}
 	}
 

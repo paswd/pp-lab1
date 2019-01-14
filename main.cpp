@@ -1,3 +1,4 @@
+#include "mpi.h"
 #include <iostream>
 #include <fstream>
 #include <cmath>
@@ -9,9 +10,7 @@ using namespace std;
 
 const size_t DEFAULT_STEP = 1;
 
-typedef enum {
-	LAYER
-} Tags;
+const int TAGS_LAYER = 1;
 
 class Puasson3dSolver {
 private:
@@ -19,9 +18,9 @@ private:
 	size_t SizeY;
 	size_t SizeZ;
 
-	double StepSqX = 1.;
-	double StepSqY = 1.;
-	double StepSqZ = 1.;
+	double StepSqX;
+	double StepSqY;
+	double StepSqZ;
 
 	size_t IterCnt;
 	double Coeff;
@@ -35,10 +34,19 @@ private:
 	size_t MachineId;
 	size_t LayersOnMachine;
 
-	double *SendBuffer = NULL;
-	double *GetBuffer = NULL;
+	double *SendBuffer;
+	double *GetBuffer;
 	size_t BufferSize;
 	MPI_Status Status;
+
+	void initDefaultVars() {
+		StepSqX = 1.;
+		StepSqY = 1.;
+		StepSqZ = 1.;
+
+		SendBuffer = NULL;
+		GetBuffer = NULL;
+	}
 
 	bool isFirstMachine() {
 		return MachineId == 0;
@@ -86,9 +94,9 @@ private:
 			LayersOnMachine++;
 		}*/
 		LayersOnMachine = getLayersOnMachine(MachineId);
-		if (isFirstMachine() || isLastMachine()) {
+		if (isFirstMachine() != isLastMachine()) {
 			LayersOnMachine++;
-		} else {
+		} else if (!isFirstMachine()) {
 			LayersOnMachine += 2;
 		}
 	}
@@ -184,6 +192,7 @@ private:
 
 public:
 	Puasson3dSolver(string filename, size_t machinesCnt, size_t machineId) {
+		initDefaultVars();
 		getDataFromFile(filename);
 		setClusterParams(min(machinesCnt, SizeZ), machineId);
 		arrInit();
@@ -201,14 +210,14 @@ public:
 			//Exchange data with previous layer
 			if (MachineId > 0) {
 				copyLayerToBuffer(SendBuffer, 1);
-				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, Tags.LAYER,
-					GetBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, Tags.LAYER, MPI_COMM_WORLD, &Status);
+				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, TAGS_LAYER,
+					GetBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, TAGS_LAYER, MPI_COMM_WORLD, &Status);
 				getLayerFromBuffer(GetBuffer, 0);
 			}
 			if (MachineId < MachinesCnt - 1) {
 				copyLayerToBuffer(SendBuffer, MachinesCnt - 2);
-				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, Tags.LAYER,
-					GetBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, Tags.LAYER, MPI_COMM_WORLD, &Status);
+				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, TAGS_LAYER,
+					GetBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, TAGS_LAYER, MPI_COMM_WORLD, &Status);
 				getLayerFromBuffer(GetBuffer, MachinesCnt - 1);
 			}
 			//Exchange data with next layer
@@ -225,30 +234,36 @@ public:
 		}
 	}
 
-	void writeResultToFile(string filename) {
+	void writeResult(std::ostream& out) {
 		for (size_t i = 0; i < MachinesCnt; i++) {
 			if (i == MachineId) {
-				ofstream of(filename.c_str());
+				//ofstream of(filename.c_str());
 				if (MachineId == 0) {
-					of << "Solution for " << SizeX << "x" << SizeY << "x" << SizeZ << endl;
-					of << "Alpha = " << Coeff << endl;
-					of << "Iterations count: " << IterCnt << endl << endl;
+					out << "Solution for " << SizeX << "x" << SizeY << "x" << SizeZ << endl;
+					out << "Alpha = " << Coeff << endl;
+					out << "Iterations count: " << IterCnt << endl << endl;
 				}
-				for (size_t k = 0; k < SizeZ; k++) {
-					of << "k = " << k << endl;
+				for (size_t k = 0; k < LayersOnMachine; k++) {
+					if (k == 0 && !isFirstMachine()) {
+						continue;
+					}
+					if (k == LayersOnMachine - 1 && !isLastMachine()) {
+						continue;
+					}
+					out << "k = " << getOriginalZPos(k) << endl;
 
 					for (size_t j = 0; j < SizeY; j++) {
 						for (size_t i = 0; i < SizeX; i++) {
 							if (i > 0) {
-								of << " ";
+								out << " ";
 							}
-							of << round(Func[i][j][k] * 100.) / 100.;
+							out << round(Func[i][j][k] * 100.) / 100.;
 						}
-						of << endl;
+						out << endl;
 					}
-					of << endl;
+					out << endl;
 				}
-				of.close();
+				//of.close();
 			}
 			MPI_Barrier(MPI_COMM_WORLD);
 		}
@@ -259,12 +274,18 @@ public:
 };
 
 
-int main(void) {
+int main(int argc, char** argv) {
+	MPI_Init(&argc, &argv);
+	int machineId, machinesCnt;
+	MPI_Comm_size(MPI_COMM_WORLD, &machinesCnt);
+	MPI_Comm_rank(MPI_COMM_WORLD, &machineId);
+	//cout << "TEST" << endl;
+
 	//int argc, char * argv[]
-	Puasson3dSolver solver("input.txt");
-	if (!isUnclaimed) {
+	Puasson3dSolver solver("input.txt", machinesCnt, machineId);
+	if (!solver.isUnclaimed()) {
 		solver.solve();
-		solver.writeResultToFile("output.txt");
+		solver.writeResult(std::cout);
 	}
 
 	return 0;
