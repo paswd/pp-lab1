@@ -3,10 +3,15 @@
 #include <cmath>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 using namespace std;
 
 const size_t DEFAULT_STEP = 1;
+
+typedef enum {
+	LAYER
+} Tags;
 
 class Puasson3dSolver {
 private:
@@ -32,6 +37,8 @@ private:
 
 	double *SendBuffer = NULL;
 	double *GetBuffer = NULL;
+	size_t BufferSize;
+	MPI_Status Status;
 
 	bool isFirstMachine() {
 		return MachineId == 0;
@@ -91,15 +98,16 @@ private:
 		in >> SizeX >> SizeY >> SizeZ >>
 			IterCnt >> Coeff;
 		in.close();
+		BufferSize = SizeX * SizeY;
 	}
-	void copyLayerToBuffer(double &buffer, size_t layerId) {
+	void copyLayerToBuffer(double *buffer, size_t layerId) {
 		for (size_t i = 0; i < SizeX; i++) {
 			for (size_t j = 0; j < SizeY; j++) {
 				buffer[(i * SizeX) + j] = Func[i][j][layerId];
 			}
 		}
 	}
-	void getLayerFromBuffer(double &buffer, size_t layerId) {
+	void getLayerFromBuffer(double *buffer, size_t layerId) {
 		for (size_t i = 0; i < SizeX; i++) {
 			for (size_t j = 0; j < SizeY; j++) {
 				Func[i][j][layerId] = buffer[(i * SizeX) + j];
@@ -136,8 +144,8 @@ private:
 			}
 		}
 
-		SendBuffer = new double[SizeX * SizeY];
-		GetBuffer = new double[SizeX * SizeY];
+		SendBuffer = new double[BufferSize];
+		GetBuffer = new double[BufferSize];
 
 	}
 
@@ -155,6 +163,9 @@ private:
 		delete [] Func;
 		delete [] NewFunc;
 		delete [] Ro;
+
+		delete [] SendBuffer;
+		delete [] GetBuffer;
 	}
 
 	double getElementNewValue(size_t i, size_t j, size_t k) {
@@ -173,10 +184,9 @@ private:
 
 public:
 	Puasson3dSolver(string filename, size_t machinesCnt, size_t machineId) {
-		setClusterParams(machinesCnt, machineId);
 		getDataFromFile(filename);
+		setClusterParams(min(machinesCnt, SizeZ), machineId);
 		arrInit();
-		CurrentIteration = 0;
 	}
 	~Puasson3dSolver() {
 		arrClear();
@@ -185,10 +195,23 @@ public:
 	void solve() {
 		size_t untillX = SizeX - 1;
 		size_t untillY = SizeY - 1;
-		size_t untillZ = SizeZ - 1;
+		size_t untillZ = LayersOnMachine - 1;
 
 		for (size_t iteration = 0; iteration < IterCnt; iteration++) {
-			
+			//Exchange data with previous layer
+			if (MachineId > 0) {
+				copyLayerToBuffer(SendBuffer, 1);
+				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, Tags.LAYER,
+					GetBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, Tags.LAYER, MPI_COMM_WORLD, &Status);
+				getLayerFromBuffer(GetBuffer, 0);
+			}
+			if (MachineId < MachinesCnt - 1) {
+				copyLayerToBuffer(SendBuffer, MachinesCnt - 2);
+				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, Tags.LAYER,
+					GetBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, Tags.LAYER, MPI_COMM_WORLD, &Status);
+				getLayerFromBuffer(GetBuffer, MachinesCnt - 1);
+			}
+			//Exchange data with next layer
 			for (size_t i = 1; i < untillX; i++) {
 				for (size_t j = 1; j < untillY; j++) {
 					for (size_t k = 1; k < untillZ; k++) {
@@ -203,25 +226,35 @@ public:
 	}
 
 	void writeResultToFile(string filename) {
-		ofstream of(filename.c_str());
-		of << "Solution for " << SizeX << "x" << SizeY << "x" << SizeZ << endl;
-		of << "Alpha = " << Coeff << endl;
-		of << "Iterations count: " << IterCnt << endl << endl;
-		for (size_t k = 0; k < SizeZ; k++) {
-			of << "k = " << k << endl;
-
-			for (size_t j = 0; j < SizeY; j++) {
-				for (size_t i = 0; i < SizeX; i++) {
-					if (i > 0) {
-						of << " ";
-					}
-					of << round(Func[i][j][k] * 100.) / 100.;
+		for (size_t i = 0; i < MachinesCnt; i++) {
+			if (i == MachineId) {
+				ofstream of(filename.c_str());
+				if (MachineId == 0) {
+					of << "Solution for " << SizeX << "x" << SizeY << "x" << SizeZ << endl;
+					of << "Alpha = " << Coeff << endl;
+					of << "Iterations count: " << IterCnt << endl << endl;
 				}
-				of << endl;
+				for (size_t k = 0; k < SizeZ; k++) {
+					of << "k = " << k << endl;
+
+					for (size_t j = 0; j < SizeY; j++) {
+						for (size_t i = 0; i < SizeX; i++) {
+							if (i > 0) {
+								of << " ";
+							}
+							of << round(Func[i][j][k] * 100.) / 100.;
+						}
+						of << endl;
+					}
+					of << endl;
+				}
+				of.close();
 			}
-			of << endl;
+			MPI_Barrier(MPI_COMM_WORLD);
 		}
-		of.close();
+	}
+	bool isUnclaimed() {
+		return MachineId >= MachinesCnt;
 	}
 };
 
@@ -229,8 +262,10 @@ public:
 int main(void) {
 	//int argc, char * argv[]
 	Puasson3dSolver solver("input.txt");
-	solver.solve();
-	solver.writeResultToFile("output.txt");
+	if (!isUnclaimed) {
+		solver.solve();
+		solver.writeResultToFile("output.txt");
+	}
 
 	return 0;
 }
