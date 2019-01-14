@@ -25,18 +25,65 @@ private:
 	double ***NewFunc;
 	double ***Ro;
 
-	size_t CurrentIteration;
-	Puasson3dSolver *PrevSolver;
-	Puasson3dSolver *NextSolver;
+	//Cluster variables
+	size_t MachinesCnt;
+	size_t MachineId;
+	size_t LayersOnMachine;
+
+	double *SendBuffer = NULL;
+	double *GetBuffer = NULL;
+
+	bool isFirstMachine() {
+		return MachineId == 0;
+	}
+	bool isLastMachine() {
+		return MachineId == (MachinesCnt - 1);
+	}
+	size_t getLayersOnMachine(size_t machineId) {
+		size_t res = SizeZ / MachinesCnt;
+		if (machineId < SizeZ % MachinesCnt) {
+			res++;
+		}
+		return res;
+	}
+	size_t getOriginalZPos(size_t posInLayer) {
+		size_t prevLayersCnt = 0;
+		for (size_t i = 0; i < MachineId; i++) {
+			prevLayersCnt += getLayersOnMachine(i);
+		}
+		size_t res = prevLayersCnt + posInLayer;
+		if (!isFirstMachine()) {
+			res--;
+		}
+		return res;
+	}
 
 	bool isBorder(size_t i, size_t j, size_t k) {
-		if (i == 0 || j == 0 || k == 0) {
+		size_t origK = getOriginalZPos(k);
+		if (i == 0 || j == 0 || origK == 0) {
 			return true;
 		}
-		if (i == SizeX - 1 || j == SizeY - 1 || k == SizeZ - 1) {
+		if (i == SizeX - 1 || j == SizeY - 1 || origK == SizeZ - 1) {
 			return true;
 		}
 		return false;
+	}
+
+
+	void setClusterParams(size_t machinesCnt, size_t machineId) {
+		MachinesCnt = machinesCnt;
+		MachineId = machineId;
+		/*LayersOnMachine = SizeZ / MachinesCnt;
+
+		if (MachineId < SizeZ % MachinesCnt) {
+			LayersOnMachine++;
+		}*/
+		LayersOnMachine = getLayersOnMachine(MachineId);
+		if (isFirstMachine() || isLastMachine()) {
+			LayersOnMachine++;
+		} else {
+			LayersOnMachine += 2;
+		}
 	}
 
 	void getDataFromFile(string filename) {
@@ -44,6 +91,20 @@ private:
 		in >> SizeX >> SizeY >> SizeZ >>
 			IterCnt >> Coeff;
 		in.close();
+	}
+	void copyLayerToBuffer(double &buffer, size_t layerId) {
+		for (size_t i = 0; i < SizeX; i++) {
+			for (size_t j = 0; j < SizeY; j++) {
+				buffer[(i * SizeX) + j] = Func[i][j][layerId];
+			}
+		}
+	}
+	void getLayerFromBuffer(double &buffer, size_t layerId) {
+		for (size_t i = 0; i < SizeX; i++) {
+			for (size_t j = 0; j < SizeY; j++) {
+				Func[i][j][layerId] = buffer[(i * SizeX) + j];
+			}
+		}
 	}
 
 	void arrInit() {
@@ -58,11 +119,11 @@ private:
 
 			for (size_t j = 0; j < SizeY; j++) {
 
-				Func[i][j] = new double[SizeZ];
-				NewFunc[i][j] = new double[SizeZ];
-				Ro[i][j] = new double[SizeZ];
+				Func[i][j] = new double[LayersOnMachine];
+				NewFunc[i][j] = new double[LayersOnMachine];
+				Ro[i][j] = new double[LayersOnMachine];
 
-				for (size_t k = 0; k < SizeZ; k++) {
+				for (size_t k = 0; k < LayersOnMachine; k++) {
 					if (isBorder(i, j, k)) {
 						Func[i][j][k] = 1.;
 						NewFunc[i][j][k] = 1.;
@@ -74,6 +135,9 @@ private:
 				}
 			}
 		}
+
+		SendBuffer = new double[SizeX * SizeY];
+		GetBuffer = new double[SizeX * SizeY];
 
 	}
 
@@ -108,13 +172,11 @@ private:
 	}
 
 public:
-	Puasson3dSolver(string filename, Puasson3dSolver *prevSolver, Puasson3dSolver *nextSolver) {
+	Puasson3dSolver(string filename, size_t machinesCnt, size_t machineId) {
+		setClusterParams(machinesCnt, machineId);
 		getDataFromFile(filename);
 		arrInit();
-
 		CurrentIteration = 0;
-		PrevSolver = prevSolver;
-		NextSolver = nextSolver;
 	}
 	~Puasson3dSolver() {
 		arrClear();
@@ -126,22 +188,17 @@ public:
 		size_t untillZ = SizeZ - 1;
 
 		for (size_t iteration = 0; iteration < IterCnt; iteration++) {
-			//cout << "iteration = " << iteration << endl;
-			//cout << "IterCnt = " << IterCnt << endl << endl;
+			
 			for (size_t i = 1; i < untillX; i++) {
-				//cout << "i = " << i << endl;
 				for (size_t j = 1; j < untillY; j++) {
-					//cout << "j = " << i << endl;
 					for (size_t k = 1; k < untillZ; k++) {
-						//cout << "k = " << i << endl;
 						NewFunc[i][j][k] = getElementNewValue(i, j, k);
-						
-						double ***tmp = Func;
-						Func = NewFunc;
-						NewFunc = tmp;
 					}
 				}
 			}
+			double ***tmp = Func;
+			Func = NewFunc;
+			NewFunc = tmp;
 		}
 	}
 
@@ -167,7 +224,6 @@ public:
 		of.close();
 	}
 };
-
 
 
 int main(void) {
