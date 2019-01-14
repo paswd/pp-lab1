@@ -15,7 +15,7 @@ Original repository:
 https://github.com/paswd/pp-lab1
 
 All rights reserved
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Parallel programming in Moscow Aviation Institute
 Laboratory work #1
