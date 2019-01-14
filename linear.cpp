@@ -118,9 +118,14 @@ public:
 		size_t untillZ = SizeZ - 1;
 
 		for (size_t iteration = 0; iteration < IterCnt; iteration++) {
+			//cout << "iteration = " << iteration << endl;
+			//cout << "IterCnt = " << IterCnt << endl << endl;
 			for (size_t i = 1; i < untillX; i++) {
+				//cout << "i = " << i << endl;
 				for (size_t j = 1; j < untillY; j++) {
+					//cout << "j = " << i << endl;
 					for (size_t k = 1; k < untillZ; k++) {
+						//cout << "k = " << i << endl;
 						NewFunc[i][j][k] = getElementNewValue(i, j, k);
 						
 						double ***tmp = Func;
