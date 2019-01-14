@@ -12,6 +12,9 @@ __________                 __      __________
 http://paswd.ru/
 me@paswd.ru
 
+Original repository:
+https://github.com/paswd/pp-lab1
+
 All rights reserved
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
