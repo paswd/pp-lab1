@@ -287,6 +287,7 @@ int main(int argc, char** argv) {
 		solver.solve();
 		solver.writeResult(std::cout);
 	}
+	MPI_Finalize();
 
 	return 0;
 }
