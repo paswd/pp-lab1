@@ -222,6 +222,24 @@ private:
 			);
 	}
 
+	void exchangeLayerPrev() {
+		if (MachineId > 0) {
+			copyLayerToBuffer(SendBuffer, 1);
+			MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, TAGS_LAYER,
+				GetBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, TAGS_LAYER, MPI_COMM_WORLD, &Status);
+			getLayerFromBuffer(GetBuffer, 0);
+		}
+	}
+
+	void exchangeLayerNext() {
+		if (MachineId < MachinesCnt - 1) {
+			copyLayerToBuffer(SendBuffer, MachinesCnt - 2);
+			MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, TAGS_LAYER,
+				GetBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, TAGS_LAYER, MPI_COMM_WORLD, &Status);
+			getLayerFromBuffer(GetBuffer, MachinesCnt - 1);
+		}
+	}
+
 public:
 	Puasson3dSolver(string filename, size_t machinesCnt, size_t machineId) {
 		initDefaultVars();
@@ -239,21 +257,8 @@ public:
 		size_t untillZ = LayersOnMachine - 1;
 
 		for (size_t iteration = 0; iteration < IterCnt; iteration++) {
-			//Exchange data with previous layer
-			if (MachineId > 0) {
-				copyLayerToBuffer(SendBuffer, 1);
-				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, TAGS_LAYER,
-					GetBuffer, BufferSize, MPI_DOUBLE, MachineId - 1, TAGS_LAYER, MPI_COMM_WORLD, &Status);
-				getLayerFromBuffer(GetBuffer, 0);
-			}
-
-			//Exchange data with next layer
-			if (MachineId < MachinesCnt - 1) {
-				copyLayerToBuffer(SendBuffer, MachinesCnt - 2);
-				MPI_Sendrecv(SendBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, TAGS_LAYER,
-					GetBuffer, BufferSize, MPI_DOUBLE, MachineId + 1, TAGS_LAYER, MPI_COMM_WORLD, &Status);
-				getLayerFromBuffer(GetBuffer, MachinesCnt - 1);
-			}
+			exchangeLayerPrev();
+			exchangeLayerNext();
 
 			for (size_t i = 1; i < untillX; i++) {
 				for (size_t j = 1; j < untillY; j++) {
